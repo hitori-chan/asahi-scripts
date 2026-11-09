@@ -34,7 +34,7 @@ install: all
 
 install-mkinitcpio: install
 	install -dD $(DESTDIR)$(PREFIX)/lib/initcpio/install
-	install -m0644 -t $(DESTDIR)$(PREFIX)/lib/initcpio/install initcpio/install/asahi
+	install -m0644 -t $(DESTDIR)$(PREFIX)/lib/initcpio/install initcpio/install/asahi initcpio/install/apple-sep
 	install -dD $(DESTDIR)$(PREFIX)/lib/initcpio/hooks
 	install -m0644 -t $(DESTDIR)$(PREFIX)/lib/initcpio/hooks initcpio/hooks/asahi
 
@@ -77,6 +77,7 @@ uninstall:
 
 uninstall-mkinitcpio:
 	rm -f $(DESTDIR)$(PREFIX)/lib/initcpio/install/asahi
+	rm -f $(DESTDIR)$(PREFIX)/lib/initcpio/install/apple-sep
 	rm -f $(DESTDIR)$(PREFIX)/lib/initcpio/hooks/asahi
 
 uninstall-dracut:

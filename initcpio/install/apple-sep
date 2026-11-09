@@ -1,0 +1,43 @@
+#!/bin/bash
+# SPDX-License-Identifier: MIT
+
+build() {
+    local dir=/var/lib/libfprint/apple-sep bag
+    local -a bags
+
+    # The SEP driver's FIDO2 authenticator starts at its bring-up on a user's Touch ID keybag, which libfprint's
+    # apple_sep driver keeps after that user's first enrolment. The bag holds no secret and only this Mac's SEP opens
+    # it; in the image it lets systemd-cryptsetup unlock a FIDO2-enrolled volume before the root is mounted.
+    if [[ -n ${APPLE_SEP_UID:-} ]]; then
+        bag=$dir/identity-$APPLE_SEP_UID.kb
+        if [[ ! -s $bag ]]; then
+            error "apple-sep: no Touch ID keybag for uid $APPLE_SEP_UID ($bag)"
+            return 1
+        fi
+    else
+        bags=("$dir"/identity-*.kb)
+        if [[ ! -s ${bags[0]} ]]; then
+            warning "apple-sep: no Touch ID keybag yet (enrol a finger, then rebuild the image)"
+            return 0
+        fi
+        if (( ${#bags[@]} > 1 )); then
+            error "apple-sep: several Touch ID keybags: set APPLE_SEP_UID in mkinitcpio.conf"
+            return 1
+        fi
+        bag=${bags[0]}
+    fi
+    add_file "$bag" /usr/lib/firmware/apple-sep-identity.kb 600
+}
+
+help() {
+    cat <<HELPEOF
+This hook adds a user's Touch ID keybag, which libfprint's apple_sep driver
+keeps, as the firmware file the SEP driver loads at its bring-up, so its
+FIDO2 authenticator is up in the initramfs: with the systemd and sd-encrypt
+hooks, a volume enrolled by systemd-cryptenroll --fido2-device opens through
+it. With several users enrolled, set APPLE_SEP_UID to the one whose keybag
+the image takes. Rebuild the image after that user's first enrolment.
+HELPEOF
+}
+
+# vim: set ft=sh ts=4 sw=4 et:
