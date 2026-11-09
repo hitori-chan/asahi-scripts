@@ -37,13 +37,56 @@ build() {
     add_runscript
     add_dir /lib/firmware
     add_symlink /lib/firmware/vendor /vendorfw
+
+    # systemd's initramfs runs no runtime hooks: the same steps as a unit once the root is mounted (the bootloader's
+    # /vendorfw, else the ESP's firmware.cpio, onto a tmpfs at the root's /lib/firmware/vendor), as dracut's
+    # 99asahi-firmware does; without it the root's drivers find no vendor firmware (no Wi-Fi). The asahi hook must
+    # come after the systemd hook.
+    if declare -F add_systemd_unit &>/dev/null; then
+        add_file - /usr/lib/asahi-scripts/initrd-vendorfw 755 <<'VENDORFW'
+#!/usr/bin/ash
+if [ ! -e /vendorfw ]; then
+    if [ ! -e /proc/device-tree/chosen/asahi,efi-system-partition ]; then
+        echo ":: Asahi: Missing asahi,efi-system-partition variable, firmware will not be loaded!"
+        exit 0
+    fi
+    (. /usr/share/asahi-scripts/functions.sh; mount_sys_esp /run/.system-efi) || exit 1
+    if [ -e /run/.system-efi/vendorfw/firmware.cpio ]; then
+        (cd / && cpio -i < /run/.system-efi/vendorfw/firmware.cpio)
+    else
+        echo ":: Asahi: Vendor firmware not available in ESP!"
+    fi
+    umount /run/.system-efi
+fi
+[ -e /vendorfw ] || exit 1
+mkdir -p /sysroot/lib/firmware/vendor
+mount -t tmpfs -o mode=0755 vendorfw /sysroot/lib/firmware/vendor || exit 1
+cp -r /vendorfw/* /vendorfw/.vendorfw.manifest /sysroot/lib/firmware/vendor
+echo ":: Asahi: Vendor firmware installed to the root"
+VENDORFW
+        add_file - /usr/lib/systemd/system/asahi-vendorfw.service 644 <<'UNIT'
+[Unit]
+Description=Asahi vendor firmware into the root
+DefaultDependencies=no
+After=initrd-root-fs.target
+Before=initrd.target
+ConditionPathExists=/etc/initrd-release
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/asahi-scripts/initrd-vendorfw
+UNIT
+        add_symlink /usr/lib/systemd/system/initrd.target.wants/asahi-vendorfw.service ../asahi-vendorfw.service
+    fi
 }
 
 help() {
     cat <<HELPEOF
 This hook adds modules necessary for using Linux on Apple Silicon Macs,
 which are not otherwise included by existing hooks due to being soft
-dependencies.
+dependencies, and loads the vendor firmware. With the systemd hook, list
+it after systemd.
 HELPEOF
 }
 
